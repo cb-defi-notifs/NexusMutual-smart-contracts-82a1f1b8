@@ -663,7 +663,6 @@ contract StakingProducts is IStakingProducts, MasterAwareV2, Multicall {
 
     (uint poolId, address stakingPoolAddress) = IStakingPoolFactory(stakingPoolFactory).create(coverContract);
 
-    console.log("stakingPoolAddress", stakingPoolAddress);
     IStakingPool(stakingPoolAddress).initialize(
       isPrivatePool,
       initialPoolFee,
@@ -671,8 +670,6 @@ contract StakingProducts is IStakingProducts, MasterAwareV2, Multicall {
       poolId,
       ipfsDescriptionHash
     );
-
-    console.log("poolId", poolId);
 
     tokenController().assignStakingPoolManager(poolId, msg.sender);
 
