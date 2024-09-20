@@ -1,20 +1,19 @@
-const { ethers, accounts } = require('hardhat');
+const { ethers } = require('hardhat');
+const { getAccounts } = require('../../utils/accounts');
 const { hex } = require('../utils').helpers;
 
 const {
-  constants: { AddressZero },
   utils: { parseEther },
 } = ethers;
 
-// will be assigned by setup()
-const instances = {};
-
 async function setup() {
+  const accounts = await getAccounts();
   const [owner, governance] = await ethers.getSigners();
 
   const MasterMock = await ethers.getContractFactory('MasterMock');
   const TokenController = await ethers.getContractFactory('TokenControllerMock');
   const TokenMock = await ethers.getContractFactory('NXMTokenMock');
+  const LegacyPool = await ethers.getContractFactory('LegacyPool');
   const Pool = await ethers.getContractFactory('Pool');
   const MCR = await ethers.getContractFactory('MCR');
   const SwapOperator = await ethers.getContractFactory('SwapOperator');
@@ -36,6 +35,7 @@ async function setup() {
   const dai = await ERC20Mock.deploy();
   const usdc = await ERC20CustomDecimalsMock.deploy(6);
   const stEth = await ERC20Mock.deploy();
+  const st = await ERC20Mock.deploy();
 
   // Deploy CoW Protocol mocks
   const cowVaultRelayer = await SOMockVaultRelayer.deploy();
@@ -43,10 +43,11 @@ async function setup() {
 
   // Deploy Master, MCR, TC, NXMToken
   const master = await MasterMock.deploy();
-  const mcr = await MCR.deploy(master.address);
+  const mcr = await MCR.deploy(master.address, 0);
 
-  const tokenController = await TokenController.deploy();
   const nxmToken = await TokenMock.deploy();
+  const tokenController = await TokenController.deploy(nxmToken.address);
+
   await nxmToken.setOperator(tokenController.address);
 
   // Deploy price aggregators
@@ -87,17 +88,40 @@ async function setup() {
     [dai.address, stEth.address, usdc.address, enzymeV4Vault.address],
     [daiAggregator.address, stethAggregator.address, usdcAggregator.address, enzymeV4VaultAggregator.address],
     [18, 18, 6, 18],
+    st.address,
+  );
+
+  // Deploy SwapOperator
+  const swapOperator = await SwapOperator.deploy(
+    cowSettlement.address,
+    await owner.getAddress(),
+    master.address,
+    weth.address,
+    enzymeV4Vault.address,
+    await owner.getAddress(), // _safe
+    dai.address,
+    usdc.address,
+    enzymeFundValueCalculatorRouter.address,
+    parseEther('1'),
   );
 
   // Deploy Pool
-  const pool = await Pool.deploy(
+  const legacyPool = await LegacyPool.deploy(
     master.address,
     priceFeedOracle.address, // price feed oracle, add to setup if needed
-    AddressZero, // swap operator
+    swapOperator.address, // swap operator
     dai.address,
     stEth.address,
     enzymeV4Vault.address,
     nxmToken.address,
+  );
+
+  const pool = await Pool.deploy(
+    master.address,
+    priceFeedOracle.address, // price feed oracle, add to setup if needed
+    swapOperator.address, // swap operator
+    nxmToken.address,
+    legacyPool.address,
   );
 
   // Setup master, token, token controller, pool and mcr connections
@@ -112,58 +136,38 @@ async function setup() {
 
   await pool.connect(governance).addAsset(usdc.address, true, 0, parseEther('1000'), 0);
 
-  // Deploy SwapOperator
-  const swapOperator = await SwapOperator.deploy(
-    cowSettlement.address,
-    await owner.getAddress(),
-    master.address,
-    weth.address,
-    enzymeV4Vault.address,
-    enzymeFundValueCalculatorRouter.address,
-    parseEther('1'),
-  );
-
   // Setup pool's swap operator
   await pool.connect(governance).updateAddressParameters(hex('SWP_OP'.padEnd(8, '\0')), swapOperator.address);
 
-  Object.assign(instances, {
-    dai,
-    weth,
-    stEth,
-    usdc,
-    master,
-    pool,
-    mcr,
-    swapOperator,
-    priceFeedOracle,
-    daiAggregator,
-    cowSettlement,
-    cowVaultRelayer,
-  });
-
-  this.accounts = {
-    ...accounts,
-    governanceAccounts: [governance],
-  };
-  this.contracts = {
-    dai,
-    weth,
-    stEth,
-    usdc,
-    master,
-    pool,
-    mcr,
-    swapOperator,
-    priceFeedOracle,
-    daiAggregator,
-    cowSettlement,
-    cowVaultRelayer,
-    enzymeV4Vault,
-    enzymeV4Comptroller,
-    enzymeFundValueCalculatorRouter,
-    nxmToken,
+  return {
+    accounts: {
+      ...accounts,
+      governanceAccounts: [governance],
+    },
+    contracts: {
+      dai,
+      weth,
+      stEth,
+      usdc,
+      st,
+      master,
+      pool,
+      mcr,
+      swapOperator,
+      priceFeedOracle,
+      daiAggregator,
+      cowSettlement,
+      cowVaultRelayer,
+      enzymeV4Vault,
+      enzymeV4Comptroller,
+      enzymeFundValueCalculatorRouter,
+      nxmToken,
+    },
+    constants: {
+      ETH_ADDRESS: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
+      DAI_ADDRESS: dai.address,
+    },
   };
 }
 
 module.exports = setup;
-module.exports.contracts = instances;

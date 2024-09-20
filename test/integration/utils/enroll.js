@@ -24,8 +24,10 @@ async function enrollMember({ mr, tk, tc }, members, kycAuthSigner, options = {}
       value: JOINING_FEE,
     });
 
-    await tk.connect(member).approve(tc.address, ethers.constants.MaxUint256);
-    await tk.transfer(member.address, initialTokens);
+    if (initialTokens && initialTokens.gt(0)) {
+      await tk.connect(member).approve(tc.address, ethers.constants.MaxUint256);
+      await tk.transfer(member.address, initialTokens);
+    }
   }
 }
 async function enrollABMember({ mr, gv }, members) {
@@ -35,6 +37,12 @@ async function enrollABMember({ mr, gv }, members) {
   for (const member of members) {
     await mr.connect(governanceSigner).updateRole(member.address, Role.AdvisoryBoard, true);
   }
+}
+
+async function getGovernanceSigner(gv) {
+  await impersonateAccount(gv.address);
+  await setEtherBalance(gv.address, parseEther('1000'));
+  return ethers.getSigner(gv.address);
 }
 
 // TODO: remove eslint disable once the function is implemented
@@ -54,4 +62,5 @@ module.exports = {
   enrollMember,
   enrollABMember,
   enrollClaimAssessor,
+  getGovernanceSigner,
 };

@@ -1,7 +1,8 @@
 const { expect } = require('chai');
 const { ethers } = require('hardhat');
-const { getCurrentTrancheId } = require('../StakingPool/helpers');
-const { setEtherBalance } = require('../../utils/evm');
+
+const { setEtherBalance } = require('../utils').evm;
+
 const { BigNumber } = ethers;
 const { parseEther } = ethers.utils;
 const { AddressZero } = ethers.constants;
@@ -21,6 +22,16 @@ const buyCoverParamsTemplate = {
   commissionRatio: 1,
   commissionDestination: AddressZero,
   ipfsData: 'ipfs data',
+};
+
+const allocationRequestTemplate = {
+  coverId: 0,
+  allocationId: 0,
+  period: daysToSeconds('30'),
+  gracePeriod: daysToSeconds('7'),
+  previousStart: 0,
+  previousExpiration: 0,
+  previousRewardsRatio: 0,
 };
 
 const initialProductTemplate = {
@@ -47,11 +58,18 @@ const burnStakeParams = {
   deallocationAmount: 0,
 };
 
+const TRANCHE_DURATION = daysToSeconds(91);
+
+async function getCurrentTrancheId() {
+  const { timestamp } = await ethers.provider.getBlock('latest');
+  return Math.floor(timestamp / TRANCHE_DURATION);
+}
+
 async function verifyProduct(params) {
-  const { cover } = this;
+  const { coverProducts } = this;
   let { product, productParams } = params;
 
-  const { _initialPrices } = await cover.getPriceAndCapacityRatios([productParams.productId]);
+  const [_initialPrice] = await coverProducts.getInitialPrices([productParams.productId]);
 
   if (!productParams.bumpedPriceUpdateTime) {
     const { timestamp } = await ethers.provider.getBlock('latest');
@@ -62,7 +80,7 @@ async function verifyProduct(params) {
   expect(product.targetPrice).to.be.equal(productParams.targetPrice);
 
   expect(product.bumpedPriceUpdateTime).to.be.equal(productParams.bumpedPriceUpdateTime);
-  expect(product.bumpedPrice).to.be.equal(_initialPrices[0]);
+  expect(product.bumpedPrice).to.be.equal(_initialPrice);
 }
 
 async function verifyInitialProduct(params) {
@@ -90,14 +108,22 @@ async function depositTo(params) {
   await stakingPool.connect(staker).depositTo(amount, trancheId, /* token id: */ 0, staker.address);
 }
 
-async function allocateCapacity(params) {
-  const { cover, stakingPool } = this;
-  const { coverBuyer, amount, productId } = params;
+async function allocateCapacity({ amount, productId }) {
+  const { stakingPool, coverSigner, coverProductTemplate } = this;
 
-  const buyCoverParams = { ...buyCoverParamsTemplate, owner: coverBuyer.address, amount, productId };
-  await cover
-    .connect(coverBuyer)
-    .allocateCapacity(buyCoverParams, 0 /* cover id */, 0 /* allocationId */, stakingPool.address);
+  const { GLOBAL_CAPACITY_RATIO, GLOBAL_REWARDS_RATIO, GLOBAL_MIN_PRICE_RATIO } = this.config;
+
+  const allocationRequest = {
+    ...allocationRequestTemplate,
+    productId,
+    globalCapacityRatio: GLOBAL_CAPACITY_RATIO,
+    capacityReductionRatio: coverProductTemplate.capacityReductionRatio,
+    useFixedPrice: coverProductTemplate.useFixedPrice,
+    rewardRatio: GLOBAL_REWARDS_RATIO,
+    globalMinPrice: GLOBAL_MIN_PRICE_RATIO,
+  };
+
+  await stakingPool.connect(coverSigner).requestAllocation(amount, 0, allocationRequest);
 }
 
 async function setStakedProducts(params) {

@@ -10,7 +10,7 @@ const { daysToSeconds } = require('../../lib/helpers');
 const path = require('path');
 const { parse: csvParse } = require('csv-parse/sync');
 const fs = require('fs');
-const generateProductTypesTx = require('../../scripts/products/generate-product-types-tx');
+const generateProductTypesTx = require('../../scripts/products/get-setProductTypes-txdata');
 
 const { parseEther, toUtf8Bytes } = ethers.utils;
 
@@ -92,7 +92,6 @@ describe('Update product types', function () {
       await this.master.getLatestAddress(toUtf8Bytes('CL')),
     );
     this.coverViewer = await ethers.getContractAt('CoverViewer', V2Addresses.CoverViewer);
-    this.assessment = await ethers.getContractAt('Assessment', await this.master.getLatestAddress(toUtf8Bytes('AS')));
     this.assessment = await ethers.getContractAt('Assessment', await this.master.getLatestAddress(toUtf8Bytes('AS')));
     this.dai = await ethers.getContractAt('ERC20Mock', DAI_ADDRESS);
     this.cover = await ethers.getContractAt('Cover', await this.master.getLatestAddress(toUtf8Bytes('CO')));

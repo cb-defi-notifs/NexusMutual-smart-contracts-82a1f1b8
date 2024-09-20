@@ -3,6 +3,7 @@ const { expect } = require('chai');
 
 const { setNextBlockTime, mineNextBlock } = require('../utils').evm;
 const { daysToSeconds } = require('../utils').helpers;
+const { divCeil } = require('../utils').bnMath;
 
 const { parseEther } = ethers.utils;
 const { BigNumber } = ethers;
@@ -116,15 +117,6 @@ function roundUpToNearestAllocationUnit(amount, nxmPerAllocationUnit) {
   return divCeil(amount, nxmPerAllocationUnit).mul(nxmPerAllocationUnit);
 }
 
-function divCeil(a, b) {
-  a = BigNumber.from(a);
-  let result = a.div(b);
-  if (!a.mod(b).isZero()) {
-    result = result.add(1);
-  }
-  return result;
-}
-
 function calculateFirstTrancheId(timestamp, period, gracePeriod) {
   return Math.floor((timestamp + period + gracePeriod) / (91 * 24 * 3600));
 }
@@ -146,28 +138,15 @@ async function getCurrentBucket() {
   return Math.floor(lastBlock.timestamp / BUCKET_DURATION);
 }
 
-async function estimateStakeShares({ amount, stakingPool }) {
+async function calculateStakeShares(stakingPool, depositAmount) {
   const stakeShareSupply = await stakingPool.getStakeSharesSupply();
 
   if (stakeShareSupply.isZero()) {
-    return Math.sqrt(amount);
+    return Math.sqrt(depositAmount);
   }
 
   const activeStake = await stakingPool.getActiveStake();
-  return amount.mul(stakeShareSupply).div(activeStake);
-}
-
-async function getNewRewardShares(params) {
-  const { stakingPool, initialStakeShares, stakeSharesIncrease, initialTrancheId, newTrancheId } = params;
-  const { timestamp: currentTime } = await ethers.provider.getBlock('latest');
-
-  return stakingPool.calculateNewRewardShares(
-    initialStakeShares,
-    stakeSharesIncrease,
-    initialTrancheId,
-    newTrancheId,
-    currentTime,
-  );
+  return depositAmount.mul(stakeShareSupply).div(activeStake);
 }
 
 async function generateRewards(
@@ -234,8 +213,7 @@ module.exports = {
   getTranches,
   getCurrentTrancheId,
   getCurrentBucket,
-  getNewRewardShares,
-  estimateStakeShares,
+  calculateStakeShares,
   generateRewards,
   calculateStakeAndRewardsWithdrawAmounts,
   moveTimeToNextBucket,

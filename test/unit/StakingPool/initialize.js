@@ -1,6 +1,6 @@
 const { expect } = require('chai');
-const { ethers } = require('hardhat');
-const { setEtherBalance } = require('../utils').evm;
+const { loadFixture } = require('@nomicfoundation/hardhat-network-helpers');
+const setup = require('./setup');
 
 const product0 = {
   productId: 0,
@@ -15,65 +15,50 @@ const initializeParams = {
   initialPoolFee: 5, // 5%
   maxPoolFee: 5, // 5%
   products: [product0],
-  ipfsDescriptionHash: 'Description Hash',
 };
 
 describe('initialize', function () {
   it('reverts if cover contract is not the caller', async function () {
-    const { stakingPool, cover } = this;
-    const { poolId, initialPoolFee, maxPoolFee, isPrivatePool, ipfsDescriptionHash } = initializeParams;
+    const fixture = await loadFixture(setup);
+    const { stakingPool, stakingProductsSigner } = fixture;
+    const { poolId, initialPoolFee, maxPoolFee, isPrivatePool } = initializeParams;
 
     await expect(
-      stakingPool.initialize(isPrivatePool, initialPoolFee, maxPoolFee, poolId, ipfsDescriptionHash),
-    ).to.be.revertedWithCustomError(stakingPool, 'OnlyCoverContract');
-
-    const coverSigner = await ethers.getImpersonatedSigner(cover.address);
-    await setEtherBalance(coverSigner.address, ethers.utils.parseEther('1'));
+      stakingPool.initialize(isPrivatePool, initialPoolFee, maxPoolFee, poolId),
+    ).to.be.revertedWithCustomError(stakingPool, 'OnlyStakingProductsContract');
 
     await expect(
-      stakingPool
-        .connect(coverSigner)
-        .initialize(isPrivatePool, initialPoolFee, maxPoolFee, poolId, ipfsDescriptionHash),
+      stakingPool.connect(stakingProductsSigner).initialize(isPrivatePool, initialPoolFee, maxPoolFee, poolId),
     ).to.not.be.reverted;
   });
 
   it('reverts if initial pool fee exceeds max pool fee', async function () {
-    const { stakingPool, cover } = this;
+    const fixture = await loadFixture(setup);
+    const { stakingPool, stakingProductsSigner } = fixture;
 
-    const { poolId, maxPoolFee, isPrivatePool, ipfsDescriptionHash } = initializeParams;
-
-    const coverSigner = await ethers.getImpersonatedSigner(cover.address);
-    await setEtherBalance(coverSigner.address, ethers.utils.parseEther('1'));
+    const { poolId, maxPoolFee, isPrivatePool } = initializeParams;
 
     await expect(
-      stakingPool
-        .connect(coverSigner)
-        .initialize(isPrivatePool, maxPoolFee + 1, maxPoolFee, poolId, ipfsDescriptionHash),
+      stakingPool.connect(stakingProductsSigner).initialize(isPrivatePool, maxPoolFee + 1, maxPoolFee, poolId),
     ).to.be.revertedWithCustomError(stakingPool, 'PoolFeeExceedsMax');
   });
 
   it('reverts if max pool fee is 100%', async function () {
-    const { stakingPool, cover } = this;
-    const { poolId, initialPoolFee, isPrivatePool, ipfsDescriptionHash } = initializeParams;
-
-    const coverSigner = await ethers.getImpersonatedSigner(cover.address);
-    await setEtherBalance(coverSigner.address, ethers.utils.parseEther('1'));
+    const fixture = await loadFixture(setup);
+    const { stakingPool, stakingProductsSigner } = fixture;
+    const { poolId, initialPoolFee, isPrivatePool } = initializeParams;
 
     await expect(
-      stakingPool.connect(coverSigner).initialize(isPrivatePool, initialPoolFee, 100, poolId, ipfsDescriptionHash),
+      stakingPool.connect(stakingProductsSigner).initialize(isPrivatePool, initialPoolFee, 100, poolId),
     ).to.be.revertedWithCustomError(stakingPool, 'MaxPoolFeeAbove100');
   });
 
   it('correctly initialize pool parameters', async function () {
-    const { stakingPool, cover } = this;
-    const { poolId, initialPoolFee, maxPoolFee, isPrivatePool, ipfsDescriptionHash } = initializeParams;
+    const fixture = await loadFixture(setup);
+    const { stakingPool, stakingProductsSigner } = fixture;
+    const { poolId, initialPoolFee, maxPoolFee, isPrivatePool } = initializeParams;
 
-    const coverSigner = await ethers.getImpersonatedSigner(cover.address);
-    await setEtherBalance(coverSigner.address, ethers.utils.parseEther('1'));
-
-    await stakingPool
-      .connect(coverSigner)
-      .initialize(isPrivatePool, initialPoolFee, maxPoolFee, poolId, ipfsDescriptionHash);
+    await stakingPool.connect(stakingProductsSigner).initialize(isPrivatePool, initialPoolFee, maxPoolFee, poolId);
 
     expect(await stakingPool.getPoolFee()).to.be.equal(initialPoolFee);
     expect(await stakingPool.getMaxPoolFee()).to.be.equal(maxPoolFee);

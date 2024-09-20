@@ -1,15 +1,19 @@
 const { ethers, network } = require('hardhat');
 const { expect } = require('chai');
+const { loadFixture } = require('@nomicfoundation/hardhat-network-helpers');
 
+const { setup } = require('./setup');
 const { signMembershipApproval } = require('../utils').membership;
+const { setCode } = require('../utils').evm;
 
 const { arrayify, parseUnits, splitSignature } = ethers.utils;
 const JOINING_FEE = parseUnits('0.002');
 
 describe('join', function () {
   it('reverts when using a signature from another chain', async function () {
-    const { memberRoles } = this.contracts;
-    const { nonMembers, defaultSender: kycAuthSigner } = this.accounts;
+    const fixture = await loadFixture(setup);
+    const { memberRoles } = fixture.contracts;
+    const { nonMembers, defaultSender: kycAuthSigner } = fixture.accounts;
 
     const membershipApprovalData0 = await signMembershipApproval({
       nonce: 0,
@@ -50,8 +54,9 @@ describe('join', function () {
   });
 
   it('reverts when reusing the same nonce', async function () {
-    const { memberRoles } = this.contracts;
-    const { nonMembers, defaultSender: kycAuthSigner } = this.accounts;
+    const fixture = await loadFixture(setup);
+    const { memberRoles } = fixture.contracts;
+    const { nonMembers, defaultSender: kycAuthSigner } = fixture.accounts;
 
     const membershipApprovalData0 = await signMembershipApproval({
       nonce: 0,
@@ -82,8 +87,9 @@ describe('join', function () {
   });
 
   it('reverts when using the signature of another address', async function () {
-    const { memberRoles } = this.contracts;
-    const { nonMembers, defaultSender: kycAuthSigner } = this.accounts;
+    const fixture = await loadFixture(setup);
+    const { memberRoles } = fixture.contracts;
+    const { nonMembers, defaultSender: kycAuthSigner } = fixture.accounts;
 
     const membershipApprovalData0 = await signMembershipApproval({
       nonce: 0,
@@ -105,8 +111,9 @@ describe('join', function () {
   });
 
   it('reverts when trying to sign up the 0 address', async function () {
-    const { memberRoles } = this.contracts;
-    const { nonMembers, defaultSender: kycAuthSigner } = this.accounts;
+    const fixture = await loadFixture(setup);
+    const { memberRoles } = fixture.contracts;
+    const { nonMembers, defaultSender: kycAuthSigner } = fixture.accounts;
 
     const membershipApprovalData0 = await signMembershipApproval({
       nonce: 0,
@@ -128,8 +135,9 @@ describe('join', function () {
   });
 
   it('reverts when the address is already a member', async function () {
-    const { memberRoles } = this.contracts;
-    const { nonMembers, defaultSender: kycAuthSigner } = this.accounts;
+    const fixture = await loadFixture(setup);
+    const { memberRoles } = fixture.contracts;
+    const { nonMembers, defaultSender: kycAuthSigner } = fixture.accounts;
 
     const membershipApprovalData0 = await signMembershipApproval({
       nonce: 0,
@@ -148,10 +156,11 @@ describe('join', function () {
   });
 
   it('reverts when the system is paused', async function () {
-    const { memberRoles, master } = this.contracts;
+    const fixture = await loadFixture(setup);
+    const { memberRoles, master } = fixture.contracts;
 
     await master.pause();
-    const { nonMembers, defaultSender: kycAuthSigner } = this.accounts;
+    const { nonMembers, defaultSender: kycAuthSigner } = fixture.accounts;
 
     const membershipApprovalData0 = await signMembershipApproval({
       nonce: 0,
@@ -167,8 +176,9 @@ describe('join', function () {
   });
 
   it('reverts when the value sent is different than the joining fee', async function () {
-    const { memberRoles } = this.contracts;
-    const { nonMembers, defaultSender: kycAuthSigner } = this.accounts;
+    const fixture = await loadFixture(setup);
+    const { memberRoles } = fixture.contracts;
+    const { nonMembers, defaultSender: kycAuthSigner } = fixture.accounts;
 
     const membershipApprovalData0 = await signMembershipApproval({
       nonce: 0,
@@ -197,8 +207,9 @@ describe('join', function () {
   });
 
   it('reverts when the signature is invalid', async function () {
-    const { memberRoles } = this.contracts;
-    const { nonMembers } = this.accounts;
+    const fixture = await loadFixture(setup);
+    const { memberRoles } = fixture.contracts;
+    const { nonMembers } = fixture.accounts;
 
     const allZeroesSignature = '0x' + '0'.repeat(192);
     const allOnesSignature = '0x' + '0'.repeat(64) + '1'.repeat(128);
@@ -213,8 +224,9 @@ describe('join', function () {
   });
 
   it('reverts when provided compact signature', async function () {
-    const { memberRoles } = this.contracts;
-    const { nonMembers, defaultSender: kycAuthSigner } = this.accounts;
+    const fixture = await loadFixture(setup);
+    const { memberRoles } = fixture.contracts;
+    const { nonMembers, defaultSender: kycAuthSigner } = fixture.accounts;
 
     const membershipApprovalData0 = await signMembershipApproval({
       nonce: 0,
@@ -230,8 +242,9 @@ describe('join', function () {
   });
 
   it('reverts if the transfer of the joining fee to the pool fails', async function () {
-    const { memberRoles, pool } = this.contracts;
-    const { nonMembers, defaultSender: kycAuthSigner } = this.accounts;
+    const fixture = await loadFixture(setup);
+    const { memberRoles, pool } = fixture.contracts;
+    const { nonMembers, defaultSender: kycAuthSigner } = fixture.accounts;
 
     const membershipApprovalData0 = await signMembershipApproval({
       nonce: 0,
@@ -239,14 +252,16 @@ describe('join', function () {
       kycAuthSigner,
     });
 
-    await pool.setRevertOnTransfers(true);
+    const { deployedBytecode: ethRejecterBytecode } = await artifacts.readArtifact('PoolEtherRejecterMock');
+    await setCode(pool.address, ethRejecterBytecode);
     await expect(
       memberRoles.join(nonMembers[0].address, 0, arrayify(membershipApprovalData0), {
         value: JOINING_FEE,
       }),
     ).to.be.revertedWith('MemberRoles: The joining fee transfer to the pool failed');
 
-    await pool.setRevertOnTransfers(false);
+    const { deployedBytecode: poolMockBytecode } = await artifacts.readArtifact('PoolMock');
+    await setCode(pool.address, poolMockBytecode);
     await expect(
       memberRoles.join(nonMembers[0].address, 0, arrayify(membershipApprovalData0), {
         value: JOINING_FEE,
@@ -255,8 +270,9 @@ describe('join', function () {
   });
 
   it('transfers the joining fee to the pool', async function () {
-    const { memberRoles, pool } = this.contracts;
-    const { nonMembers, defaultSender: kycAuthSigner } = this.accounts;
+    const fixture = await loadFixture(setup);
+    const { memberRoles, pool } = fixture.contracts;
+    const { nonMembers, defaultSender: kycAuthSigner } = fixture.accounts;
 
     const membershipApprovalData0 = await signMembershipApproval({
       nonce: 0,
@@ -273,8 +289,9 @@ describe('join', function () {
   });
 
   it('whitelists the address through token controller to allow it to transfer tokens', async function () {
-    const { memberRoles, tokenController } = this.contracts;
-    const { nonMembers, defaultSender: kycAuthSigner } = this.accounts;
+    const fixture = await loadFixture(setup);
+    const { memberRoles, tokenController } = fixture.contracts;
+    const { nonMembers, defaultSender: kycAuthSigner } = fixture.accounts;
 
     const membershipApprovalData0 = await signMembershipApproval({
       nonce: 0,
@@ -293,8 +310,9 @@ describe('join', function () {
   });
 
   it('assigns the member role to the address and emits MemberJoined event', async function () {
-    const { memberRoles } = this.contracts;
-    const { nonMembers, defaultSender: kycAuthSigner } = this.accounts;
+    const fixture = await loadFixture(setup);
+    const { memberRoles } = fixture.contracts;
+    const { nonMembers, defaultSender: kycAuthSigner } = fixture.accounts;
 
     const membershipApprovalData0 = await signMembershipApproval({
       nonce: 0,

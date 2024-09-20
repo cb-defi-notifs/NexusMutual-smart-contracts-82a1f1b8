@@ -6,6 +6,8 @@ const { buyCover, transferCoverAsset } = require('../utils/cover');
 
 const { daysToSeconds } = require('../utils').helpers;
 const { mineNextBlock, setNextBlockTime, setNextBlockBaseFee, setEtherBalance } = require('../../utils/evm');
+const { loadFixture } = require('@nomicfoundation/hardhat-network-helpers');
+const setup = require('../setup');
 
 const { parseEther, parseUnits } = ethers.utils;
 
@@ -37,22 +39,26 @@ async function submitIncident({ gv, cg, productId, period, priceBefore }) {
   await cg.connect(gvSigner).submitIncident(productId, priceBefore, currentTime + period / 2, parseEther('100'), '');
 }
 
+async function submitClaimSetup() {
+  const fixture = await loadFixture(setup);
+  const { tk } = fixture.contracts;
+  const members = fixture.accounts.members.slice(0, 5);
+  const amount = parseEther('30000');
+
+  for (const member of members) {
+    await tk.connect(fixture.accounts.defaultSender).transfer(member.address, amount);
+  }
+
+  return fixture;
+}
+
 describe('submitClaim', function () {
-  beforeEach(async function () {
-    const { tk } = this.contracts;
-    const members = this.accounts.members.slice(0, 5);
-    const amount = parseEther('30000');
-
-    for (const member of members) {
-      await tk.connect(this.accounts.defaultSender).transfer(member.address, amount);
-    }
-  });
-
   it('submits ETH claim and approves claim', async function () {
-    const { DEFAULT_PRODUCTS } = this;
-    const { cover, stakingPool1, as, cg, ybETH, gv } = this.contracts;
-    const [coverBuyer1, staker1] = this.accounts.members;
-    const [nonMember1] = this.accounts.nonMembers;
+    const fixture = await loadFixture(submitClaimSetup);
+    const { DEFAULT_PRODUCTS } = fixture;
+    const { cover, stakingPool1, as, cg, ybETH, gv } = fixture.contracts;
+    const [coverBuyer1, staker1] = fixture.accounts.members;
+    const [nonMember1] = fixture.accounts.nonMembers;
 
     const { period, gracePeriod, amount, priceDenominator } = submitClaimFixture;
 
@@ -60,10 +66,22 @@ describe('submitClaim', function () {
     const coverAsset = 0; // ETH
 
     // Stake to open up capacity
-    await stake({ stakingPool: stakingPool1, staker: staker1, productId, period, gracePeriod });
+    await stake({
+      contracts: fixture.contracts,
+      stakingPool: stakingPool1,
+      staker: staker1,
+      productId,
+      period,
+      gracePeriod,
+    });
 
     // cover buyer gets yield token
-    await transferYieldToken({ tokenOwner: this.accounts.defaultSender, coverBuyer: coverBuyer1, yToken: ybETH, cg });
+    await transferYieldToken({
+      tokenOwner: fixture.accounts.defaultSender,
+      coverBuyer: coverBuyer1,
+      yToken: ybETH,
+      cg,
+    });
 
     // Buy Cover
     await buyCover({
@@ -115,10 +133,11 @@ describe('submitClaim', function () {
   });
 
   it('submits DAI claim and approves claim', async function () {
-    const { DEFAULT_PRODUCTS } = this;
-    const { cover, stakingPool1, as, dai, cg, ybDAI, gv } = this.contracts;
-    const [coverBuyer1, staker1] = this.accounts.members;
-    const [nonMember1] = this.accounts.nonMembers;
+    const fixture = await loadFixture(submitClaimSetup);
+    const { DEFAULT_PRODUCTS } = fixture;
+    const { cover, stakingPool1, as, dai, cg, ybDAI, gv } = fixture.contracts;
+    const [coverBuyer1, staker1] = fixture.accounts.members;
+    const [nonMember1] = fixture.accounts.nonMembers;
 
     const { period, gracePeriod, amount, priceDenominator } = submitClaimFixture;
 
@@ -126,13 +145,30 @@ describe('submitClaim', function () {
     const coverAsset = 1; // DAI
 
     // Stake to open up capacity
-    await stake({ stakingPool: stakingPool1, staker: staker1, productId, period, gracePeriod });
+    await stake({
+      contracts: fixture.contracts,
+      stakingPool: stakingPool1,
+      staker: staker1,
+      productId,
+      period,
+      gracePeriod,
+    });
 
     // cover buyer gets cover asset
-    await transferCoverAsset({ tokenOwner: this.accounts.defaultSender, coverBuyer: coverBuyer1, asset: dai, cover });
+    await transferCoverAsset({
+      tokenOwner: fixture.accounts.defaultSender,
+      coverBuyer: coverBuyer1,
+      asset: dai,
+      cover,
+    });
 
     // cover buyer gets yield token
-    await transferYieldToken({ tokenOwner: this.accounts.defaultSender, coverBuyer: coverBuyer1, yToken: ybDAI, cg });
+    await transferYieldToken({
+      tokenOwner: fixture.accounts.defaultSender,
+      coverBuyer: coverBuyer1,
+      yToken: ybDAI,
+      cg,
+    });
 
     // Buy Cover
     await buyCover({
@@ -184,10 +220,11 @@ describe('submitClaim', function () {
   });
 
   it('submits ETH claim and rejects claim', async function () {
-    const { DEFAULT_PRODUCTS } = this;
-    const { cover, stakingPool1, as, cg, ybETH, gv } = this.contracts;
-    const [coverBuyer1, staker1, staker2] = this.accounts.members;
-    const [nonMember1] = this.accounts.nonMembers;
+    const fixture = await loadFixture(submitClaimSetup);
+    const { DEFAULT_PRODUCTS } = fixture;
+    const { cover, stakingPool1, as, cg, ybETH, gv } = fixture.contracts;
+    const [coverBuyer1, staker1, staker2] = fixture.accounts.members;
+    const [nonMember1] = fixture.accounts.nonMembers;
 
     const { period, gracePeriod, amount, priceDenominator } = submitClaimFixture;
 
@@ -195,10 +232,22 @@ describe('submitClaim', function () {
     const coverAsset = 0; // ETH
 
     // Stake to open up capacity
-    await stake({ stakingPool: stakingPool1, staker: staker1, productId, period, gracePeriod });
+    await stake({
+      contracts: fixture.contracts,
+      stakingPool: stakingPool1,
+      staker: staker1,
+      productId,
+      period,
+      gracePeriod,
+    });
 
     // cover buyer gets yield token
-    await transferYieldToken({ tokenOwner: this.accounts.defaultSender, coverBuyer: coverBuyer1, yToken: ybETH, cg });
+    await transferYieldToken({
+      tokenOwner: fixture.accounts.defaultSender,
+      coverBuyer: coverBuyer1,
+      yToken: ybETH,
+      cg,
+    });
 
     // Buy Cover
     await buyCover({
@@ -233,10 +282,11 @@ describe('submitClaim', function () {
   });
 
   it('submits DAI claim and rejects claim', async function () {
-    const { DEFAULT_PRODUCTS } = this;
-    const { cover, stakingPool1, as, dai, cg, ybDAI, gv } = this.contracts;
-    const [coverBuyer1, staker1, staker2] = this.accounts.members;
-    const [nonMember1] = this.accounts.nonMembers;
+    const fixture = await loadFixture(submitClaimSetup);
+    const { DEFAULT_PRODUCTS } = fixture;
+    const { cover, stakingPool1, as, dai, cg, ybDAI, gv } = fixture.contracts;
+    const [coverBuyer1, staker1, staker2] = fixture.accounts.members;
+    const [nonMember1] = fixture.accounts.nonMembers;
 
     const { period, gracePeriod, amount, priceDenominator } = submitClaimFixture;
 
@@ -244,13 +294,30 @@ describe('submitClaim', function () {
     const coverAsset = 1; // DAI
 
     // Stake to open up capacity
-    await stake({ stakingPool: stakingPool1, staker: staker1, productId, period, gracePeriod });
+    await stake({
+      contracts: fixture.contracts,
+      stakingPool: stakingPool1,
+      staker: staker1,
+      productId,
+      period,
+      gracePeriod,
+    });
 
     // cover buyer gets cover asset
-    await transferCoverAsset({ tokenOwner: this.accounts.defaultSender, coverBuyer: coverBuyer1, asset: dai, cover });
+    await transferCoverAsset({
+      tokenOwner: fixture.accounts.defaultSender,
+      coverBuyer: coverBuyer1,
+      asset: dai,
+      cover,
+    });
 
     // cover buyer gets yield token
-    await transferYieldToken({ tokenOwner: this.accounts.defaultSender, coverBuyer: coverBuyer1, yToken: ybDAI, cg });
+    await transferYieldToken({
+      tokenOwner: fixture.accounts.defaultSender,
+      coverBuyer: coverBuyer1,
+      yToken: ybDAI,
+      cg,
+    });
 
     // Buy Cover
     await buyCover({
@@ -284,10 +351,11 @@ describe('submitClaim', function () {
   });
 
   it('submits and redeems full amount of ETH claim', async function () {
-    const { DEFAULT_PRODUCTS } = this;
-    const { cover, stakingPool1, as, cg, ybETH, gv } = this.contracts;
-    const [coverBuyer1, staker1] = this.accounts.members;
-    const [nonMember1] = this.accounts.nonMembers;
+    const fixture = await loadFixture(submitClaimSetup);
+    const { DEFAULT_PRODUCTS } = fixture;
+    const { cover, stakingPool1, as, cg, ybETH, gv } = fixture.contracts;
+    const [coverBuyer1, staker1] = fixture.accounts.members;
+    const [nonMember1] = fixture.accounts.nonMembers;
 
     const { period, gracePeriod, amount, priceDenominator } = submitClaimFixture;
 
@@ -295,10 +363,22 @@ describe('submitClaim', function () {
     const coverAsset = 0; // ETH
 
     // Stake to open up capacity
-    await stake({ stakingPool: stakingPool1, staker: staker1, productId, period, gracePeriod });
+    await stake({
+      contracts: fixture.contracts,
+      stakingPool: stakingPool1,
+      staker: staker1,
+      productId,
+      period,
+      gracePeriod,
+    });
 
     // cover buyer gets yield token
-    await transferYieldToken({ tokenOwner: this.accounts.defaultSender, coverBuyer: coverBuyer1, yToken: ybETH, cg });
+    await transferYieldToken({
+      tokenOwner: fixture.accounts.defaultSender,
+      coverBuyer: coverBuyer1,
+      yToken: ybETH,
+      cg,
+    });
 
     // Buy Cover
     await buyCover({
@@ -336,10 +416,11 @@ describe('submitClaim', function () {
   });
 
   it('submits and redeems full amount of DAI claim', async function () {
-    const { DEFAULT_PRODUCTS } = this;
-    const { cover, stakingPool1, as, dai, cg, ybDAI, gv } = this.contracts;
-    const [coverBuyer1, staker1] = this.accounts.members;
-    const [nonMember1] = this.accounts.nonMembers;
+    const fixture = await loadFixture(submitClaimSetup);
+    const { DEFAULT_PRODUCTS } = fixture;
+    const { cover, stakingPool1, as, dai, cg, ybDAI, gv } = fixture.contracts;
+    const [coverBuyer1, staker1] = fixture.accounts.members;
+    const [nonMember1] = fixture.accounts.nonMembers;
 
     const { amount, period, gracePeriod, priceDenominator } = submitClaimFixture;
 
@@ -347,13 +428,30 @@ describe('submitClaim', function () {
     const coverAsset = 1; // DAI
 
     // Stake to open up capacity
-    await stake({ stakingPool: stakingPool1, staker: staker1, productId, period, gracePeriod });
+    await stake({
+      contracts: fixture.contracts,
+      stakingPool: stakingPool1,
+      staker: staker1,
+      productId,
+      period,
+      gracePeriod,
+    });
 
     // cover buyer gets cover asset
-    await transferCoverAsset({ tokenOwner: this.accounts.defaultSender, coverBuyer: coverBuyer1, asset: dai, cover });
+    await transferCoverAsset({
+      tokenOwner: fixture.accounts.defaultSender,
+      coverBuyer: coverBuyer1,
+      asset: dai,
+      cover,
+    });
 
     // cover buyer gets yield token
-    await transferYieldToken({ tokenOwner: this.accounts.defaultSender, coverBuyer: coverBuyer1, yToken: ybDAI, cg });
+    await transferYieldToken({
+      tokenOwner: fixture.accounts.defaultSender,
+      coverBuyer: coverBuyer1,
+      yToken: ybDAI,
+      cg,
+    });
 
     // Buy Cover
     await buyCover({
@@ -388,10 +486,11 @@ describe('submitClaim', function () {
   });
 
   it('submits and redeems claims from multiple users', async function () {
-    const { DEFAULT_PRODUCTS } = this;
-    const { cover, stakingPool1, as, cg, ybETH, gv } = this.contracts;
-    const [coverBuyer1, coverBuyer2, coverBuyer3, staker1] = this.accounts.members;
-    const [nonMember1, nonMember2, nonMember3] = this.accounts.nonMembers;
+    const fixture = await loadFixture(submitClaimSetup);
+    const { DEFAULT_PRODUCTS } = fixture;
+    const { cover, stakingPool1, as, cg, ybETH, gv } = fixture.contracts;
+    const [coverBuyer1, coverBuyer2, coverBuyer3, staker1] = fixture.accounts.members;
+    const [nonMember1, nonMember2, nonMember3] = fixture.accounts.nonMembers;
 
     const { period, gracePeriod, amount, priceDenominator } = submitClaimFixture;
 
@@ -399,16 +498,38 @@ describe('submitClaim', function () {
     const coverAsset = 0; // ETH
 
     // Stake to open up capacity
-    await stake({ stakingPool: stakingPool1, staker: staker1, productId, period, gracePeriod });
+    await stake({
+      contracts: fixture.contracts,
+      stakingPool: stakingPool1,
+      staker: staker1,
+      productId,
+      period,
+      gracePeriod,
+    });
 
     // coverBuyer1 gets yield token
-    await transferYieldToken({ tokenOwner: this.accounts.defaultSender, coverBuyer: coverBuyer1, yToken: ybETH, cg });
+    await transferYieldToken({
+      tokenOwner: fixture.accounts.defaultSender,
+      coverBuyer: coverBuyer1,
+      yToken: ybETH,
+      cg,
+    });
 
     // coverBuyer2 gets yield token
-    await transferYieldToken({ tokenOwner: this.accounts.defaultSender, coverBuyer: coverBuyer2, yToken: ybETH, cg });
+    await transferYieldToken({
+      tokenOwner: fixture.accounts.defaultSender,
+      coverBuyer: coverBuyer2,
+      yToken: ybETH,
+      cg,
+    });
 
     // coverBuyer3 gets yield token
-    await transferYieldToken({ tokenOwner: this.accounts.defaultSender, coverBuyer: coverBuyer3, yToken: ybETH, cg });
+    await transferYieldToken({
+      tokenOwner: fixture.accounts.defaultSender,
+      coverBuyer: coverBuyer3,
+      yToken: ybETH,
+      cg,
+    });
 
     // Buy Cover coverBuyer1
     await buyCover({
@@ -496,10 +617,11 @@ describe('submitClaim', function () {
   });
 
   it('submits and redeems claims from multiple products', async function () {
-    const { DEFAULT_PRODUCTS } = this;
-    const { cover, stakingPool1, as, cg, ybETH, gv, dai, ybDAI } = this.contracts;
-    const [coverBuyer1, coverBuyer2, staker1] = this.accounts.members;
-    const [nonMember1, nonMember2] = this.accounts.nonMembers;
+    const fixture = await loadFixture(submitClaimSetup);
+    const { DEFAULT_PRODUCTS } = fixture;
+    const { cover, stakingPool1, as, cg, ybETH, gv, dai, ybDAI } = fixture.contracts;
+    const [coverBuyer1, coverBuyer2, staker1] = fixture.accounts.members;
+    const [nonMember1, nonMember2] = fixture.accounts.nonMembers;
 
     const { period, gracePeriod, amount, priceDenominator } = submitClaimFixture;
 
@@ -509,10 +631,22 @@ describe('submitClaim', function () {
       const coverAsset = 0; // ETH
 
       // Stake to open up capacity
-      await stake({ stakingPool: stakingPool1, staker: staker1, productId, period, gracePeriod });
+      await stake({
+        contracts: fixture.contracts,
+        stakingPool: stakingPool1,
+        staker: staker1,
+        productId,
+        period,
+        gracePeriod,
+      });
 
       // cover buyer gets yield token
-      await transferYieldToken({ tokenOwner: this.accounts.defaultSender, coverBuyer: coverBuyer1, yToken: ybETH, cg });
+      await transferYieldToken({
+        tokenOwner: fixture.accounts.defaultSender,
+        coverBuyer: coverBuyer1,
+        yToken: ybETH,
+        cg,
+      });
 
       // Buy Cover
       await buyCover({
@@ -539,13 +673,30 @@ describe('submitClaim', function () {
       const coverAsset = 1; // DAI
 
       // Stake to open up capacity
-      await stake({ stakingPool: stakingPool1, staker: staker1, productId, period, gracePeriod });
+      await stake({
+        contracts: fixture.contracts,
+        stakingPool: stakingPool1,
+        staker: staker1,
+        productId,
+        period,
+        gracePeriod,
+      });
 
       // cover buyer gets cover asset
-      await transferCoverAsset({ tokenOwner: this.accounts.defaultSender, coverBuyer: coverBuyer2, asset: dai, cover });
+      await transferCoverAsset({
+        tokenOwner: fixture.accounts.defaultSender,
+        coverBuyer: coverBuyer2,
+        asset: dai,
+        cover,
+      });
 
       // cover buyer gets yield token
-      await transferYieldToken({ tokenOwner: this.accounts.defaultSender, coverBuyer: coverBuyer2, yToken: ybDAI, cg });
+      await transferYieldToken({
+        tokenOwner: fixture.accounts.defaultSender,
+        coverBuyer: coverBuyer2,
+        yToken: ybDAI,
+        cg,
+      });
 
       // Buy Cover
       await buyCover({
@@ -594,10 +745,11 @@ describe('submitClaim', function () {
   });
 
   it('submits USDC claim and approves claim', async function () {
-    const { DEFAULT_PRODUCTS } = this;
-    const { cover, stakingPool1, as, usdc, cg, ybUSDC, gv } = this.contracts;
-    const [coverBuyer, staker] = this.accounts.members;
-    const [nonMember] = this.accounts.nonMembers;
+    const fixture = await loadFixture(submitClaimSetup);
+    const { DEFAULT_PRODUCTS } = fixture;
+    const { cover, stakingPool1, as, usdc, cg, ybUSDC, gv } = fixture.contracts;
+    const [coverBuyer, staker] = fixture.accounts.members;
+    const [nonMember] = fixture.accounts.nonMembers;
 
     const { period, gracePeriod, priceDenominator } = submitClaimFixture;
 
@@ -606,13 +758,13 @@ describe('submitClaim', function () {
     const coverAsset = 4; // usdc
 
     // Stake to open up capacity
-    await stake({ stakingPool: stakingPool1, staker, productId, period, gracePeriod });
+    await stake({ contracts: fixture.contracts, stakingPool: stakingPool1, staker, productId, period, gracePeriod });
 
     // cover buyer gets cover asset
-    await transferCoverAsset({ tokenOwner: this.accounts.defaultSender, coverBuyer, asset: usdc, cover });
+    await transferCoverAsset({ tokenOwner: fixture.accounts.defaultSender, coverBuyer, asset: usdc, cover });
 
     // cover buyer gets yield token
-    await transferYieldToken({ tokenOwner: this.accounts.defaultSender, coverBuyer, yToken: ybUSDC, cg });
+    await transferYieldToken({ tokenOwner: fixture.accounts.defaultSender, coverBuyer, yToken: ybUSDC, cg });
 
     // Buy Cover
     await buyCover({
@@ -646,10 +798,11 @@ describe('submitClaim', function () {
   });
 
   it('submits and redeems full amount of USDC claim', async function () {
-    const { DEFAULT_PRODUCTS } = this;
-    const { cover, stakingPool1, as, usdc, cg, ybUSDC, gv } = this.contracts;
-    const [coverBuyer1, staker1] = this.accounts.members;
-    const [nonMember1] = this.accounts.nonMembers;
+    const fixture = await loadFixture(submitClaimSetup);
+    const { DEFAULT_PRODUCTS } = fixture;
+    const { cover, stakingPool1, as, usdc, cg, ybUSDC, gv } = fixture.contracts;
+    const [coverBuyer1, staker1] = fixture.accounts.members;
+    const [nonMember1] = fixture.accounts.nonMembers;
 
     const { period, gracePeriod, priceDenominator } = submitClaimFixture;
 
@@ -659,13 +812,30 @@ describe('submitClaim', function () {
     const coverAsset = 4; // usdc
 
     // Stake to open up capacity
-    await stake({ stakingPool: stakingPool1, staker: staker1, productId, period, gracePeriod });
+    await stake({
+      contracts: fixture.contracts,
+      stakingPool: stakingPool1,
+      staker: staker1,
+      productId,
+      period,
+      gracePeriod,
+    });
 
     // cover buyer gets cover asset
-    await transferCoverAsset({ tokenOwner: this.accounts.defaultSender, coverBuyer: coverBuyer1, asset: usdc, cover });
+    await transferCoverAsset({
+      tokenOwner: fixture.accounts.defaultSender,
+      coverBuyer: coverBuyer1,
+      asset: usdc,
+      cover,
+    });
 
     // cover buyer gets yield token
-    await transferYieldToken({ tokenOwner: this.accounts.defaultSender, coverBuyer: coverBuyer1, yToken: ybUSDC, cg });
+    await transferYieldToken({
+      tokenOwner: fixture.accounts.defaultSender,
+      coverBuyer: coverBuyer1,
+      yToken: ybUSDC,
+      cg,
+    });
 
     // Buy Cover
     await buyCover({

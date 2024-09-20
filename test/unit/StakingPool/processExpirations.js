@@ -1,7 +1,7 @@
 const { ethers } = require('hardhat');
 const { expect } = require('chai');
 
-const { setEtherBalance, increaseTime, setNextBlockTime, mineNextBlock } = require('../utils').evm;
+const { increaseTime, setNextBlockTime, mineNextBlock } = require('../utils').evm;
 const { daysToSeconds } = require('../utils').helpers;
 const {
   getTranches,
@@ -12,6 +12,8 @@ const {
   setTime,
   MAX_ACTIVE_TRANCHES,
 } = require('./helpers');
+const { loadFixture } = require('@nomicfoundation/hardhat-network-helpers');
+const setup = require('./setup');
 
 const { AddressZero } = ethers.constants;
 const { parseEther } = ethers.utils;
@@ -36,32 +38,31 @@ const poolInitParams = {
   initialPoolFee: 5, // 5%
   maxPoolFee: 5, // 5%
   products: [productParams],
-  ipfsDescriptionHash: 'Description Hash',
 };
 
+async function proccessExpirationSetup() {
+  const fixture = await loadFixture(setup);
+  const { stakingPool, stakingProducts } = fixture;
+  const { poolId, initialPoolFee, maxPoolFee, products } = poolInitParams;
+
+  await stakingPool.connect(fixture.stakingProductsSigner).initialize(false, initialPoolFee, maxPoolFee, poolId);
+
+  await stakingProducts.connect(fixture.stakingProductsSigner).setInitialProducts(poolId, products);
+
+  // Move to the beginning of the next tranche
+  const { firstActiveTrancheId: trancheId } = await getTranches();
+  await setTime((trancheId + 1) * TRANCHE_DURATION);
+
+  return fixture;
+}
+
 describe('processExpirations', function () {
-  beforeEach(async function () {
-    const { stakingPool, stakingProducts, cover } = this;
-    const { poolId, initialPoolFee, maxPoolFee, products, ipfsDescriptionHash } = poolInitParams;
-
-    const coverSigner = await ethers.getImpersonatedSigner(cover.address);
-    await setEtherBalance(coverSigner.address, ethers.utils.parseEther('1'));
-    this.coverSigner = coverSigner;
-
-    await stakingPool.connect(coverSigner).initialize(false, initialPoolFee, maxPoolFee, poolId, ipfsDescriptionHash);
-
-    await stakingProducts.connect(coverSigner).setInitialProducts(poolId, products);
-
-    // Move to the beginning of the next tranche
-    const { firstActiveTrancheId: trancheId } = await getTranches();
-    await setTime((trancheId + 1) * TRANCHE_DURATION);
-  });
-
   it('expires tranche with no previous updates', async function () {
-    const { stakingPool } = this;
+    const fixture = await loadFixture(proccessExpirationSetup);
+    const { stakingPool } = fixture;
     const {
       members: [user],
-    } = this.accounts;
+    } = fixture.accounts;
 
     const { amount, tokenId, destination } = depositToFixture;
 
@@ -83,8 +84,9 @@ describe('processExpirations', function () {
   });
 
   it('does not revert when expires multiple tranches', async function () {
-    const { stakingPool } = this;
-    const [user] = this.accounts.members;
+    const fixture = await loadFixture(proccessExpirationSetup);
+    const { stakingPool } = fixture;
+    const [user] = fixture.accounts.members;
     const { amount, tokenId, destination } = depositToFixture;
 
     const { firstActiveTrancheId } = await getTranches();
@@ -99,18 +101,20 @@ describe('processExpirations', function () {
   });
 
   it('anyone can call this method', async function () {
-    const { stakingPool } = this;
+    const fixture = await loadFixture(proccessExpirationSetup);
+    const { stakingPool } = fixture;
     const {
       nonMembers: [anyone],
-    } = this.accounts;
+    } = fixture.accounts;
 
     await expect(stakingPool.connect(anyone).processExpirations(true)).to.not.be.reverted;
   });
 
   it('expires tranches updating active stake, stake shares and rewards shares supply', async function () {
-    const { stakingPool } = this;
-    const { POOL_FEE_DENOMINATOR } = this.config;
-    const [user] = this.accounts.members;
+    const fixture = await loadFixture(proccessExpirationSetup);
+    const { stakingPool } = fixture;
+    const { POOL_FEE_DENOMINATOR } = fixture.config;
+    const [user] = fixture.accounts.members;
 
     const { amount, tokenId, destination } = depositToFixture;
     const { initialPoolFee } = poolInitParams;
@@ -154,7 +158,7 @@ describe('processExpirations', function () {
       expect(rewardsSharesSupply).to.equal(rewardsSharesTotalSupply);
     }
 
-    await generateRewards(stakingPool, this.coverSigner, TRANCHE_DURATION * 7, 0);
+    await generateRewards(stakingPool, fixture.coverSigner, TRANCHE_DURATION * 7, 0);
 
     await stakingPool.processExpirations(true);
 
@@ -192,10 +196,11 @@ describe('processExpirations', function () {
   });
 
   it('expires tranches correctly storing expiredTranches struct', async function () {
-    const { stakingPool } = this;
+    const fixture = await loadFixture(proccessExpirationSetup);
+    const { stakingPool } = fixture;
     const {
       members: [user],
-    } = this.accounts;
+    } = fixture.accounts;
 
     const { amount, tokenId, destination } = depositToFixture;
 
@@ -211,7 +216,7 @@ describe('processExpirations', function () {
 
     const baseStakeShares = BigNumber.from(Math.sqrt(amount));
 
-    await generateRewards(stakingPool, this.coverSigner, TRANCHE_DURATION * 7, 0);
+    await generateRewards(stakingPool, fixture.coverSigner, TRANCHE_DURATION * 7, 0);
 
     await stakingPool.processExpirations(true);
 
@@ -241,10 +246,11 @@ describe('processExpirations', function () {
   });
 
   it('correctly calculates accNxmPerRewardShare', async function () {
-    const { stakingPool } = this;
+    const fixture = await loadFixture(proccessExpirationSetup);
+    const { stakingPool } = fixture;
     const {
       members: [user],
-    } = this.accounts;
+    } = fixture.accounts;
 
     const { amount, tokenId, destination } = depositToFixture;
 
@@ -259,7 +265,7 @@ describe('processExpirations', function () {
       await stakingPool.connect(user).depositTo(amount, tranche, tokenId, destination);
     }
 
-    await generateRewards(stakingPool, this.coverSigner, TRANCHE_DURATION * 3, 0);
+    await generateRewards(stakingPool, fixture.coverSigner, TRANCHE_DURATION * 3, 0);
 
     await increaseTime(TRANCHE_DURATION - BUCKET_DURATION);
 
@@ -331,10 +337,11 @@ describe('processExpirations', function () {
   });
 
   it('expires buckets updating rewards per second and lastAccNxmUpdate', async function () {
-    const { stakingPool } = this;
+    const fixture = await loadFixture(proccessExpirationSetup);
+    const { stakingPool } = fixture;
     const {
       members: [user],
-    } = this.accounts;
+    } = fixture.accounts;
 
     const { amount, tokenId, destination } = depositToFixture;
 
@@ -347,7 +354,7 @@ describe('processExpirations', function () {
 
     await stakingPool.connect(user).depositTo(amount, firstActiveTrancheId + 1, tokenId, destination);
 
-    await generateRewards(stakingPool, this.coverSigner, daysToSeconds(10), 0);
+    await generateRewards(stakingPool, fixture.coverSigner, daysToSeconds(10), 0);
 
     const accNxmPerRewardsShareBefore = await stakingPool.getAccNxmPerRewardsShare();
     const rewardPerSecondBefore = await stakingPool.getRewardPerSecond();
@@ -376,10 +383,11 @@ describe('processExpirations', function () {
   });
 
   it('updates first active tranche id', async function () {
-    const { stakingPool } = this;
+    const fixture = await loadFixture(proccessExpirationSetup);
+    const { stakingPool } = fixture;
     const {
       members: [user],
-    } = this.accounts;
+    } = fixture.accounts;
 
     const { amount, tokenId, destination } = depositToFixture;
 
@@ -406,10 +414,11 @@ describe('processExpirations', function () {
   });
 
   it('updates first active bucket id', async function () {
-    const { stakingPool } = this;
+    const fixture = await loadFixture(proccessExpirationSetup);
+    const { stakingPool } = fixture;
     const {
       members: [user],
-    } = this.accounts;
+    } = fixture.accounts;
 
     const { amount, tokenId, destination } = depositToFixture;
 
@@ -438,10 +447,11 @@ describe('processExpirations', function () {
   });
 
   it('updates accNxmPerRewardsShare and lastAccNxmUpdate up to date when forced by param', async function () {
-    const { stakingPool } = this;
+    const fixture = await loadFixture(proccessExpirationSetup);
+    const { stakingPool } = fixture;
     const {
       members: [user],
-    } = this.accounts;
+    } = fixture.accounts;
 
     const { amount, tokenId, destination } = depositToFixture;
 
@@ -454,7 +464,7 @@ describe('processExpirations', function () {
 
     await stakingPool.connect(user).depositTo(amount, firstActiveTrancheId + 1, tokenId, destination);
 
-    await generateRewards(stakingPool, this.coverSigner, daysToSeconds(10), 0);
+    await generateRewards(stakingPool, fixture.coverSigner, daysToSeconds(10), 0);
 
     const accNxmPerRewardsShareBefore = await stakingPool.getAccNxmPerRewardsShare();
     const rewardPerSecondBefore = await stakingPool.getRewardPerSecond();

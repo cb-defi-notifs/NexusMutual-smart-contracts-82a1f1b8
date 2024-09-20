@@ -2,12 +2,20 @@
 
 pragma solidity >=0.5.0;
 
-import "./ICover.sol";
+import "./ICoverProducts.sol";
 import "./IStakingPool.sol";
 
 interface IStakingProducts {
 
-  // TODO: resize values?
+  struct StakedProductParam {
+    uint productId;
+    bool recalculateEffectiveWeight;
+    bool setTargetWeight;
+    uint8 targetWeight;
+    bool setTargetPrice;
+    uint96 targetPrice;
+  }
+
   struct Weights {
     uint32 totalEffectiveWeight;
     uint32 totalTargetWeight;
@@ -25,8 +33,6 @@ interface IStakingProducts {
 
   function setProducts(uint poolId, StakedProductParam[] memory params) external;
 
-  function setInitialProducts(uint poolId, ProductInitializationParams[] memory params) external;
-
   function getProductTargetWeight(uint poolId, uint productId) external view returns (uint);
 
   function getTotalTargetWeight(uint poolId) external view returns (uint);
@@ -40,6 +46,8 @@ interface IStakingProducts {
     uint bumpedPrice,
     uint bumpedPriceUpdateTime
   );
+
+  function getPoolManager(uint poolId) external view returns (address);
 
   /* ============= PRICING FUNCTIONS ============= */
 
@@ -95,6 +103,28 @@ interface IStakingProducts {
     uint allocationUnitsPerNxm
   ) external pure returns (uint);
 
+  /* ========== STAKING POOL CREATION ========== */
+
+  function stakingPool(uint poolId) external view returns (IStakingPool);
+
+  function getStakingPoolCount() external view returns (uint);
+
+  function createStakingPool(
+    bool isPrivatePool,
+    uint initialPoolFee,
+    uint maxPoolFee,
+    ProductInitializationParams[] calldata productInitParams,
+    string calldata ipfsDescriptionHash
+  ) external returns (uint poolId, address stakingPoolAddress);
+
+  function changeStakingPoolFactoryOperator(address newOperator) external;
+
+  function setPoolMetadata(uint poolId, string memory ipfsHash) external;
+
+  function getPoolMetadata(uint poolId) external view returns (string memory ipfsHash);
+
+  function setInitialMetadata(string[] calldata ipfsHashes) external;
+
   /* ============= EVENTS ============= */
 
   event ProductUpdated(uint productId, uint8 targetWeight, uint96 targetPrice);
@@ -116,4 +146,11 @@ interface IStakingProducts {
   error TotalTargetWeightExceeded();
   error TotalEffectiveWeightExceeded();
 
+  // Staking Pool creation
+  error ProductDoesntExistOrIsDeprecated();
+  error InvalidProductType();
+  error TargetPriceBelowGlobalMinPriceRatio();
+
+  // IPFS
+  error IpfsHashRequired();
 }

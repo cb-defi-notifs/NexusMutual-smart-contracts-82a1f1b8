@@ -20,22 +20,13 @@ struct AllocationRequest {
   uint globalMinPrice;
 }
 
-struct StakedProductParam {
+struct BurnStakeParams {
+  uint allocationId;
   uint productId;
-  bool recalculateEffectiveWeight;
-  bool setTargetWeight;
-  uint8 targetWeight;
-  bool setTargetPrice;
-  uint96 targetPrice;
+  uint start;
+  uint period;
+  uint deallocationAmount;
 }
-
-  struct BurnStakeParams {
-    uint allocationId;
-    uint productId;
-    uint start;
-    uint period;
-    uint deallocationAmount;
-  }
 
 interface IStakingPool {
 
@@ -62,12 +53,20 @@ interface IStakingPool {
     uint128 rewardsShares;
   }
 
+  struct WithdrawTrancheContext {
+    uint _firstActiveTrancheId;
+    uint _accNxmPerRewardsShare;
+    uint managerLockedInGovernanceUntil;
+    bool withdrawStake;
+    bool withdrawRewards;
+    address destination;
+}
+
   function initialize(
     bool isPrivatePool,
     uint initialPoolFee,
     uint maxPoolFee,
-    uint _poolId,
-    string memory ipfsDescriptionHash
+    uint _poolId
   ) external;
 
   function processExpirations(bool updateUntilCurrentTimestamp) external;
@@ -158,6 +157,11 @@ interface IStakingPool {
     uint reductionRatio
   ) external view returns (uint[] memory trancheCapacities);
 
+  function updateRewardsShares(
+    uint trancheId,
+    uint[] calldata tokenIds
+  ) external;
+
   /* ========== EVENTS ========== */
 
   event StakeDeposited(address indexed user, uint256 amount, uint256 trancheId, uint256 tokenId);
@@ -167,8 +171,6 @@ interface IStakingPool {
   event PoolPrivacyChanged(address indexed manager, bool isPrivate);
 
   event PoolFeeChanged(address indexed manager, uint newFee);
-
-  event PoolDescriptionSet(string ipfsDescriptionHash);
 
   event Withdraw(address indexed user, uint indexed tokenId, uint tranche, uint amountStakeWithdrawn, uint amountRewardsWithdrawn);
 
@@ -182,6 +184,7 @@ interface IStakingPool {
 
   // Auth
   error OnlyCoverContract();
+  error OnlyStakingProductsContract();
   error OnlyManager();
   error PrivatePool();
   error SystemPaused();

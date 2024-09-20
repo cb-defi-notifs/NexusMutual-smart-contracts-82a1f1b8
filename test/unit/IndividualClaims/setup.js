@@ -1,8 +1,13 @@
-const { ethers, accounts } = require('hardhat');
+const { ethers } = require('hardhat');
+
+const { ASSET } = require('./helpers');
 const { hex } = require('../../../lib/helpers');
+const { getAccounts } = require('../../utils/accounts');
+
 const { parseEther } = ethers.utils;
 
 async function setup() {
+  const accounts = await getAccounts();
   const NXM = await ethers.getContractFactory('NXMTokenMock');
   const nxm = await NXM.deploy();
   await nxm.deployed();
@@ -11,11 +16,15 @@ async function setup() {
   const memberRoles = await MemberRoles.deploy();
   await memberRoles.deployed();
 
+  const Ramm = await ethers.getContractFactory('RammMock');
+  const ramm = await Ramm.deploy();
+  await ramm.deployed();
+
   const CLMockTokenController = await ethers.getContractFactory('CLMockTokenController');
   const tokenController = await CLMockTokenController.deploy(nxm.address);
   await tokenController.deployed();
 
-  nxm.setOperator(tokenController.address);
+  await nxm.setOperator(tokenController.address);
 
   const Master = await ethers.getContractFactory('MasterMock');
   const master = await Master.deploy();
@@ -25,10 +34,12 @@ async function setup() {
   const dai = await DAI.deploy();
   await dai.deployed();
 
-  const CLMockPool = await ethers.getContractFactory('CLMockPool');
-  const pool = await CLMockPool.deploy();
+  const PoolMock = await ethers.getContractFactory('PoolMock');
+  const pool = await PoolMock.deploy();
   await pool.deployed();
   await pool.addAsset({ assetAddress: dai.address, isCoverAsset: true, isAbandonedAsset: false });
+  await pool.setTokenPrice(ASSET.ETH, parseEther('0.0382')); // 1 NXM ~ 0.0382 ETH
+  await pool.setTokenPrice(ASSET.DAI, parseEther('3.82')); // 1 NXM ~ 3.82 DAI)
 
   const Assessment = await ethers.getContractFactory('CLMockAssessment');
   const assessment = await Assessment.deploy();
@@ -46,9 +57,9 @@ async function setup() {
   const cover = await Cover.deploy(coverNFT.address);
   await cover.deployed();
 
-  const Distributor = await ethers.getContractFactory('CLMockDistributor');
-  const distributor = await Distributor.deploy(individualClaims.address);
-  await distributor.deployed();
+  const CoverProducts = await ethers.getContractFactory('ICMockCoverProducts');
+  const coverProducts = await CoverProducts.deploy();
+  await coverProducts.deployed();
 
   const masterInitTxs = await Promise.all([
     master.setLatestAddress(hex('TC'), tokenController.address),
@@ -56,13 +67,15 @@ async function setup() {
     master.setLatestAddress(hex('P1'), pool.address),
     master.setLatestAddress(hex('AS'), assessment.address),
     master.setLatestAddress(hex('CO'), cover.address),
+    master.setLatestAddress(hex('CP'), coverProducts.address),
     master.setLatestAddress(hex('CI'), individualClaims.address),
+    master.setLatestAddress(hex('RA'), ramm.address),
     master.setTokenAddress(nxm.address),
   ]);
   await Promise.all(masterInitTxs.map(x => x.wait()));
-  await cover.addProductType('0', '30', '5000');
-  await cover.addProductType('0', '90', '5000');
-  await cover.addProductType('1', '30', '5000');
+  await coverProducts.addProductType('0', '30', '5000');
+  await coverProducts.addProductType('0', '90', '5000');
+  await coverProducts.addProductType('1', '30', '5000');
 
   const productTemplate = {
     productType: '0',
@@ -74,19 +87,19 @@ async function setup() {
     useFixedPrice: false,
   };
 
-  await cover.addProduct({
+  await coverProducts.addProduct({
     ...productTemplate,
     productType: '0',
     yieldTokenAddress: '0x1111111111111111111111111111111111111111',
   });
 
-  await cover.addProduct({
+  await coverProducts.addProduct({
     ...productTemplate,
     productType: '1',
     yieldTokenAddress: '0x2222222222222222222222222222222222222222',
   });
 
-  await cover.addProduct({
+  await coverProducts.addProduct({
     ...productTemplate,
     productType: '2',
     yieldTokenAddress: '0x3333333333333333333333333333333333333333',
@@ -103,23 +116,25 @@ async function setup() {
   }
 
   accounts.defaultSender.sendTransaction({ to: pool.address, value: parseEther('200') });
-  dai.mint(pool.address, parseEther('200'));
+  await dai.mint(pool.address, parseEther('200'));
 
   const config = await individualClaims.config();
 
-  this.config = config;
-  this.accounts = accounts;
-  this.contracts = {
-    pool,
-    nxm,
-    dai,
-    individualClaims,
-    assessment,
-    cover,
-    distributor,
-    coverNFT,
-    master,
-    memberRoles,
+  return {
+    config,
+    accounts,
+    contracts: {
+      pool,
+      nxm,
+      dai,
+      individualClaims,
+      assessment,
+      cover,
+      coverProducts,
+      coverNFT,
+      master,
+      memberRoles,
+    },
   };
 }
 

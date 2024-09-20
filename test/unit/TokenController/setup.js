@@ -1,24 +1,30 @@
-const { ethers, accounts } = require('hardhat');
+const { ethers } = require('hardhat');
 const { Role } = require('../../../lib/constants');
+const { getAccounts } = require('../../utils/accounts');
 const { hex } = require('../utils').helpers;
 
 const { parseEther } = ethers.utils;
 
 async function setup() {
+  const accounts = await getAccounts();
   const { internalContracts, members } = accounts;
   const internal = internalContracts[0];
 
-  const pooledStaking = await ethers.deployContract('TCMockPooledStaking');
-
   const stakingPoolFactory = await ethers.deployContract('StakingPoolFactory', [accounts.defaultSender.address]);
+  const stakingNFT = await ethers.deployContract('TCMockStakingNFT');
 
   const nxm = await ethers.deployContract('NXMTokenMock');
-  const tokenController = await ethers.deployContract('TokenController', [
+  const tokenController = await ethers.deployContract('DisposableTokenController', [
     '0x0000000000000000000000000000000000000000',
     '0x0000000000000000000000000000000000000000',
     stakingPoolFactory.address,
     nxm.address,
+    stakingNFT.address,
   ]);
+
+  const pooledStaking = await ethers.deployContract('TCMockPooledStaking', [nxm.address]);
+
+  await nxm.addToWhiteList(tokenController.address);
 
   const master = await ethers.deployContract('MasterMock');
   await master.enrollGovernance(accounts.governanceContracts[0].address);
@@ -57,15 +63,17 @@ async function setup() {
 
   await tokenController.changeDependentContractAddress();
 
-  this.accounts = accounts;
-  this.contracts = {
-    nxm,
-    master,
-    governance,
-    tokenController,
-    assessment,
-    stakingPoolFactory,
-    pooledStaking,
+  return {
+    accounts,
+    contracts: {
+      nxm,
+      master,
+      governance,
+      tokenController,
+      assessment,
+      stakingPoolFactory,
+      pooledStaking,
+    },
   };
 }
 

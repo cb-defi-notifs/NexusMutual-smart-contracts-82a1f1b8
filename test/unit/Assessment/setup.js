@@ -1,9 +1,12 @@
-const { ethers, accounts } = require('hardhat');
+const { ethers } = require('hardhat');
 const { hex } = require('../../../lib/helpers');
 const { Role } = require('../../../lib/constants');
+const { getAccounts } = require('../../utils/accounts');
+const { impersonateAccount, setEtherBalance } = require('../utils').evm;
 const { parseEther } = ethers.utils;
 
 async function setup() {
+  const accounts = await getAccounts();
   const NXM = await ethers.getContractFactory('NXMTokenMock');
   const nxm = await NXM.deploy();
   await nxm.deployed();
@@ -15,6 +18,10 @@ async function setup() {
   const ASMockIndividualClaims = await ethers.getContractFactory('ASMockIndividualClaims');
   const individualClaims = await ASMockIndividualClaims.deploy(nxm.address);
   await individualClaims.deployed();
+
+  const ASMockRamm = await ethers.getContractFactory('RammMock');
+  const ramm = await ASMockRamm.deploy();
+  await ramm.deployed();
 
   const ASMockYieldTokenIncidents = await ethers.getContractFactory('ASMockYieldTokenIncidents');
   const yieldTokenIncidents = await ASMockYieldTokenIncidents.deploy();
@@ -45,6 +52,7 @@ async function setup() {
     master.setLatestAddress(hex('CG'), yieldTokenIncidents.address),
     master.setLatestAddress(hex('AS'), assessment.address),
     master.setLatestAddress(hex('MR'), memberRoles.address),
+    master.setLatestAddress(hex('RA'), ramm.address),
     master.enrollInternal(individualClaims.address),
     master.enrollInternal(yieldTokenIncidents.address),
   ]);
@@ -68,17 +76,24 @@ async function setup() {
 
   const config = await assessment.config();
 
-  this.config = config;
-  this.accounts = accounts;
-  this.contracts = {
-    nxm,
-    dai,
-    assessment,
-    master,
-    individualClaims,
-    yieldTokenIncidents,
-    tokenController,
-    memberRoles,
+  await impersonateAccount(tokenController.address);
+  await setEtherBalance(tokenController.address, parseEther('100'));
+  accounts.tokenControllerSigner = await ethers.getSigner(tokenController.address);
+
+  return {
+    config,
+    accounts,
+    contracts: {
+      nxm,
+      dai,
+      assessment,
+      master,
+      individualClaims,
+      yieldTokenIncidents,
+      tokenController,
+      memberRoles,
+      ramm,
+    },
   };
 }
 

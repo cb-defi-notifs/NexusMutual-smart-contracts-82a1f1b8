@@ -3,15 +3,16 @@
 pragma solidity >=0.5.0;
 
 interface Aggregator {
+  function decimals() external view returns (uint8);
   function latestAnswer() external view returns (int);
 }
 
-struct OracleAsset {
-  Aggregator aggregator;
-  uint8 decimals;
-}
-
 interface IPriceFeedOracle {
+
+  struct OracleAsset {
+    Aggregator aggregator;
+    uint8 decimals;
+  }
 
   function ETH() external view returns (address);
   function assets(address) external view returns (Aggregator, uint8);

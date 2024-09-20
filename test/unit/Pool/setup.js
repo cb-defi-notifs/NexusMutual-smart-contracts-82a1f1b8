@@ -1,16 +1,20 @@
-const { ethers, accounts } = require('hardhat');
+const { ethers } = require('hardhat');
+
+const { getAccounts } = require('../utils').accounts;
+const { Role } = require('../utils').constants;
+const { toBytes2 } = require('../utils').helpers;
+
 const { BigNumber } = ethers;
 const { parseEther } = ethers.utils;
 const { AddressZero, WeiPerEther } = ethers.constants;
 
-const { Role } = require('../utils').constants;
-const { toBytes2 } = require('../utils').helpers;
-
 async function setup() {
+  const accounts = await getAccounts();
   // rewrite above artifact imports using ethers.js
   const MasterMock = await ethers.getContractFactory('MasterMock');
   const TokenController = await ethers.getContractFactory('TokenControllerMock');
   const TokenMock = await ethers.getContractFactory('NXMTokenMock');
+  const LegacyPool = await ethers.getContractFactory('LegacyPool');
   const Pool = await ethers.getContractFactory('Pool');
   const MCR = await ethers.getContractFactory('P1MockMCR');
   const ERC20Mock = await ethers.getContractFactory('ERC20Mock');
@@ -19,13 +23,16 @@ async function setup() {
   const ChainlinkAggregatorMock = await ethers.getContractFactory('ChainlinkAggregatorMock');
   const P1MockSwapOperator = await ethers.getContractFactory('P1MockSwapOperator');
   const MemberRolesMock = await ethers.getContractFactory('MemberRolesMock');
+  const RammMock = await ethers.getContractFactory('RammMock');
 
   const master = await MasterMock.deploy();
   const dai = await ERC20Mock.deploy();
   const stETH = await ERC20BlacklistableMock.deploy();
   const enzymeVault = await ERC20Mock.deploy();
   const otherAsset = await ERC20Mock.deploy();
+  const st = await ERC20Mock.deploy();
   const memberRoles = await MemberRolesMock.deploy();
+  const ramm = await RammMock.deploy();
 
   const ethToDaiRate = parseEther('394.59');
   const daiToEthRate = BigNumber.from(10).pow(36).div(ethToDaiRate);
@@ -46,18 +53,19 @@ async function setup() {
     [dai, stETH, enzymeVault, otherAsset].map(c => c.address),
     [chainlinkDAI, chainlinkSteth, chainlinkEnzymeVault, chainlinkOtherAsset].map(c => c.address),
     [18, 18, 18, 18],
+    st.address,
   );
 
   const swapOperator = await P1MockSwapOperator.deploy();
 
   const mcr = await MCR.deploy();
-  const tokenController = await TokenController.deploy();
-
   const token = await TokenMock.deploy();
+  const tokenController = await TokenController.deploy(token.address);
+
   await token.setOperator(tokenController.address);
   await token.mint(accounts.defaultSender.address, parseEther('10000'));
 
-  const pool = await Pool.deploy(
+  const legacyPool = await LegacyPool.deploy(
     AddressZero, // master: it is changed a few lines below
     priceFeedOracle.address,
     swapOperator.address,
@@ -67,12 +75,21 @@ async function setup() {
     token.address,
   );
 
+  const pool = await Pool.deploy(
+    AddressZero, // master: it is changed a few lines below
+    priceFeedOracle.address,
+    swapOperator.address,
+    token.address,
+    legacyPool.address,
+  );
+
   // set contract addresses
   await master.setTokenAddress(token.address);
   await master.setLatestAddress(toBytes2('P1'), pool.address);
   await master.setLatestAddress(toBytes2('MC'), mcr.address);
   await master.setLatestAddress(toBytes2('TC'), tokenController.address);
   await master.setLatestAddress(toBytes2('MR'), memberRoles.address);
+  await master.setLatestAddress(toBytes2('RA'), ramm.address);
 
   const contractsToUpdate = [mcr, pool, tokenController];
 
@@ -103,26 +120,30 @@ async function setup() {
     await master.enrollGovernance(governanceContract.address);
   }
 
-  this.accounts = accounts;
-  this.master = master;
-  this.token = token;
-  this.pool = pool;
-  this.mcr = mcr;
-  this.tokenController = tokenController;
-  this.memberRoles = memberRoles;
-  this.swapOperator = swapOperator;
-  this.priceFeedOracle = priceFeedOracle;
+  return {
+    accounts,
+    master,
+    token,
+    pool,
+    mcr,
+    tokenController,
+    memberRoles,
+    swapOperator,
+    priceFeedOracle,
+    ramm,
 
-  // tokens
-  this.dai = dai;
-  this.stETH = stETH;
-  this.enzymeVault = enzymeVault;
-  this.otherAsset = otherAsset;
+    // tokens
+    dai,
+    stETH,
+    enzymeVault,
+    otherAsset,
+    st, // safeTracker
 
-  // oracles
-  this.chainlinkDAI = chainlinkDAI;
-  this.chainlinkSteth = chainlinkSteth;
-  this.chainlinkEnzymeVault = chainlinkEnzymeVault;
+    // oracles
+    chainlinkDAI,
+    chainlinkSteth,
+    chainlinkEnzymeVault,
+  };
 }
 
 module.exports = setup;

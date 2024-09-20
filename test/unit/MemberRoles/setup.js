@@ -1,4 +1,5 @@
-const { ethers, accounts } = require('hardhat');
+const { ethers, artifacts } = require('hardhat');
+const { getAccounts } = require('../utils').accounts;
 
 const { hex } = require('../utils').helpers;
 const { setCode } = require('../utils').evm;
@@ -8,11 +9,13 @@ const { AddressZero } = ethers.constants;
 const { parseEther, formatBytes32String } = ethers.utils;
 
 async function setup() {
-  const TokenControllerMock = await ethers.getContractFactory('TokenControllerMock');
-  const tokenController = await TokenControllerMock.deploy();
-
+  const accounts = await getAccounts();
   const NXM = await ethers.getContractFactory('NXMTokenMock');
   const nxm = await NXM.deploy();
+
+  const TokenControllerMock = await ethers.getContractFactory('TokenControllerMock');
+  const tokenController = await TokenControllerMock.deploy(nxm.address);
+
   await nxm.setOperator(tokenController.address);
 
   const MemberRoles = await ethers.getContractFactory('MemberRoles');
@@ -21,7 +24,7 @@ async function setup() {
   const Master = await ethers.getContractFactory('MasterMock');
   const master = await Master.deploy();
 
-  const Pool = await ethers.getContractFactory('MRMockPool');
+  const Pool = await ethers.getContractFactory('PoolMock');
   const pool = await Pool.deploy();
 
   const CoverNFT = await ethers.getContractFactory('MRMockCoverNFT');
@@ -105,20 +108,21 @@ async function setup() {
   await memberRoles.connect(accounts.governanceContracts[0]).updateRole(abMember.address, Role.AdvisoryBoard, true);
   await master.enrollMember(abMember.address, Role.Member);
   await memberRoles.connect(accounts.governanceContracts[0]).updateRole(abMember.address, Role.Member, true);
-
-  this.accounts = accounts;
-  this.contracts = {
-    nxm,
-    master,
-    pool,
-    memberRoles,
-    cover,
-    coverNFT,
-    stakingNFT,
-    tokenController,
-    quotationData,
-    pooledStaking,
-    assessment,
+  return {
+    accounts,
+    contracts: {
+      nxm,
+      master,
+      pool,
+      memberRoles,
+      cover,
+      coverNFT,
+      stakingNFT,
+      tokenController,
+      quotationData,
+      pooledStaking,
+      assessment,
+    },
   };
 }
 

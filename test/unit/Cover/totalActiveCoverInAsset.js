@@ -1,9 +1,11 @@
 const { ethers } = require('hardhat');
 const { expect } = require('chai');
+const { loadFixture } = require('@nomicfoundation/hardhat-network-helpers');
 
-const { increaseTime, setNextBlockTime } = require('../utils').evm;
+const { increaseTime } = require('../utils').evm;
 const { daysToSeconds } = require('../utils').helpers;
 const { buyCoverOnOnePool } = require('./helpers');
+const setup = require('./setup');
 
 const { BigNumber } = ethers;
 const { parseEther } = ethers.utils;
@@ -32,23 +34,14 @@ const daiCoverBuyFixture = {
 };
 
 describe('totalActiveCoverInAsset', function () {
-  before(async function () {
-    const { dai, cover } = this;
-    const { members } = this.accounts;
-
-    for (const member of members) {
-      await dai.mint(member.address, parseEther('100000'));
-      await dai.connect(member).approve(cover.address, parseEther('100000'));
-    }
-  });
-
   it('should compute active cover amount for ETH correctly after cover purchase', async function () {
-    const { cover } = this;
-    const { BUCKET_SIZE } = this.config;
+    const fixture = await loadFixture(setup);
+    const { cover } = fixture;
+    const { BUCKET_SIZE } = fixture.config;
 
     const { coverAsset, amount } = ethCoverBuyFixture;
 
-    await buyCoverOnOnePool.call(this, ethCoverBuyFixture);
+    await buyCoverOnOnePool.call(fixture, ethCoverBuyFixture);
 
     const { timestamp } = await ethers.provider.getBlock('latest');
     const currentBucketId = Math.floor(timestamp / BUCKET_SIZE);
@@ -58,12 +51,13 @@ describe('totalActiveCoverInAsset', function () {
   });
 
   it('should compute active cover amount for DAI correctly after cover purchase', async function () {
-    const { cover } = this;
-    const { BUCKET_SIZE } = this.config;
+    const fixture = await loadFixture(setup);
+    const { cover } = fixture;
+    const { BUCKET_SIZE } = fixture.config;
 
     const { coverAsset, amount } = daiCoverBuyFixture;
 
-    await buyCoverOnOnePool.call(this, daiCoverBuyFixture);
+    await buyCoverOnOnePool.call(fixture, daiCoverBuyFixture);
 
     const { timestamp } = await ethers.provider.getBlock('latest');
     const currentBucketId = Math.floor(timestamp / BUCKET_SIZE);
@@ -73,14 +67,15 @@ describe('totalActiveCoverInAsset', function () {
   });
 
   it('should decrease active cover amount when cover expires', async function () {
-    const { cover } = this;
-    const { BUCKET_SIZE } = this.config;
+    const fixture = await loadFixture(setup);
+    const { cover } = fixture;
+    const { BUCKET_SIZE } = fixture.config;
     const { coverAsset, amount } = daiCoverBuyFixture;
 
-    await buyCoverOnOnePool.call(this, daiCoverBuyFixture);
+    await buyCoverOnOnePool.call(fixture, daiCoverBuyFixture);
 
     await increaseTime(BUCKET_SIZE.add(daiCoverBuyFixture.period).toNumber());
-    await buyCoverOnOnePool.call(this, daiCoverBuyFixture);
+    await buyCoverOnOnePool.call(fixture, daiCoverBuyFixture);
 
     const { timestamp } = await ethers.provider.getBlock('latest');
     const currentBucketId = Math.floor(timestamp / BUCKET_SIZE);
@@ -89,110 +84,11 @@ describe('totalActiveCoverInAsset', function () {
     expect(totalActiveCoverInAsset).to.be.equal(amount);
   });
 
-  it('should increase/decrease active cover amount when a legacy cover is migrated/expired', async function () {
-    const { cover } = this;
-    const { BUCKET_SIZE } = this.config;
-    const [internalContract] = this.accounts.internalContracts;
-    const member = this.accounts.defaultSender;
-
-    const { timestamp } = await ethers.provider.getBlock('latest');
-
-    const coverAsset = 0; // ETH
-    const amount = parseEther('1000');
-    const start = timestamp - 10;
-    const period = 90 * 24 * 3600;
-
-    const activeCoverInitial = await cover.activeCover(coverAsset);
-
-    await cover
-      .connect(internalContract)
-      .addLegacyCover(/* productId: */ 0, coverAsset, amount, start, period, member.address);
-
-    {
-      const activeCover = await cover.activeCover(coverAsset);
-
-      // last bucket update id does not change because we do not expire anything
-      expect(activeCover.lastBucketUpdateId).to.equal(activeCoverInitial.lastBucketUpdateId);
-
-      const expectedTotalActiveCoverInAsset = activeCoverInitial.totalActiveCoverInAsset.add(amount);
-      expect(activeCover.totalActiveCoverInAsset).to.equal(expectedTotalActiveCoverInAsset);
-    }
-
-    // advance time post bucket expiration
-    const bucketAtExpiry = Math.ceil((start + period) / BUCKET_SIZE.toNumber());
-    const bucketStartTime = bucketAtExpiry * BUCKET_SIZE.toNumber();
-    await setNextBlockTime(bucketStartTime + 10);
-
-    // buy a different cover to trigger the expiration
-    const { amount: secondCoverAmount } = ethCoverBuyFixture;
-    await buyCoverOnOnePool.call(this, ethCoverBuyFixture);
-
-    {
-      const activeCover = await cover.activeCover(coverAsset);
-      expect(activeCover.lastBucketUpdateId).to.equal(bucketAtExpiry);
-
-      // adding only second cover amount, the migrated one should have expired
-      const expectedTotalActiveCoverInAsset = activeCoverInitial.totalActiveCoverInAsset.add(secondCoverAmount);
-      expect(activeCover.totalActiveCoverInAsset).to.equal(expectedTotalActiveCoverInAsset);
-    }
-  });
-
-  it('should decrease active cover amount on legacy cover burned', async function () {
-    const { cover } = this;
-    const { BUCKET_SIZE } = this.config;
-    const [internalContract] = this.accounts.internalContracts;
-    const member = this.accounts.defaultSender;
-
-    const { timestamp } = await ethers.provider.getBlock('latest');
-
-    const coverAsset = 0; // ETH
-    const amount = parseEther('1000');
-    const start = timestamp - 10;
-    const period = 90 * 24 * 3600;
-
-    const activeCoverInitial = await cover.activeCover(coverAsset);
-
-    await cover
-      .connect(internalContract)
-      .addLegacyCover(/* productId: */ 0, coverAsset, amount, start, period, member.address);
-
-    const coverId = await cover.coverDataCount();
-    await cover.connect(internalContract).burnStake(coverId, 0, amount);
-
-    {
-      const { timestamp } = await ethers.provider.getBlock('latest');
-      const currentBucketId = Math.floor(timestamp / BUCKET_SIZE.toNumber());
-
-      const activeCover = await cover.activeCover(coverAsset);
-      expect(activeCover.lastBucketUpdateId).to.equal(currentBucketId);
-
-      // should have decreased back to initial amount
-      expect(activeCover.totalActiveCoverInAsset).to.equal(activeCoverInitial.totalActiveCoverInAsset);
-    }
-
-    // advance time post bucket expiration to make sure expiration doesn't underflow
-    const bucketAtExpiry = Math.ceil((start + period) / BUCKET_SIZE.toNumber());
-    const bucketStartTime = bucketAtExpiry * BUCKET_SIZE.toNumber();
-    await setNextBlockTime(bucketStartTime + 10);
-
-    // buy a different cover to trigger the expiration
-    const { amount: secondCoverAmount } = ethCoverBuyFixture;
-    await buyCoverOnOnePool.call(this, ethCoverBuyFixture);
-
-    {
-      const activeCover = await cover.activeCover(coverAsset);
-      expect(activeCover.lastBucketUpdateId).to.equal(bucketAtExpiry);
-
-      // adding only second cover amount
-      const expectedTotalActiveCoverInAsset = activeCoverInitial.totalActiveCoverInAsset.add(secondCoverAmount);
-      expect(activeCover.totalActiveCoverInAsset).to.equal(expectedTotalActiveCoverInAsset);
-    }
-  });
-
   it.skip('should decrease active cover when an edited cover expires', async function () {
-    const { cover } = this;
-    const { BUCKET_SIZE } = this.config;
-    const [member] = this.accounts.members;
+    const fixture = await loadFixture(setup);
+    const { cover } = fixture;
+    const { BUCKET_SIZE } = fixture.config;
+    const [member] = fixture.accounts.members;
 
     const { amount, period, coverAsset, productId } = daiCoverBuyFixture;
 
@@ -261,40 +157,43 @@ describe('totalActiveCoverInAsset', function () {
   });
 
   it('should be able to burn all active cover', async function () {
-    const { cover } = this;
-    const [internalContract] = this.accounts.internalContracts;
+    const fixture = await loadFixture(setup);
+    const { cover } = fixture;
+    const [internalContract] = fixture.accounts.internalContracts;
 
     const { coverAsset, amount } = daiCoverBuyFixture;
 
-    await buyCoverOnOnePool.call(this, daiCoverBuyFixture);
+    await buyCoverOnOnePool.call(fixture, daiCoverBuyFixture);
     const coverId = await cover.coverDataCount();
     await cover.connect(internalContract).burnStake(coverId, 0, amount);
     expect(await cover.totalActiveCoverInAsset(coverAsset)).to.be.equal(0);
   });
 
   it('should decrease active cover by 1 WEI, and not cause rounding issues', async function () {
-    const { cover } = this;
-    const [internalContract] = this.accounts.internalContracts;
+    const fixture = await loadFixture(setup);
+    const { cover } = fixture;
+    const [internalContract] = fixture.accounts.internalContracts;
 
     const { coverAsset, amount } = daiCoverBuyFixture;
 
-    await buyCoverOnOnePool.call(this, daiCoverBuyFixture);
+    await buyCoverOnOnePool.call(fixture, daiCoverBuyFixture);
     const coverId = await cover.coverDataCount();
     await cover.connect(internalContract).burnStake(coverId, 0, 1);
     expect(await cover.totalActiveCoverInAsset(coverAsset)).to.be.equal(amount.sub(1));
   });
 
   it('should calculate active cover correctly after multiple purchases and burns', async function () {
-    const { cover } = this;
-    const { BUCKET_SIZE } = this.config;
+    const fixture = await loadFixture(setup);
+    const { cover } = fixture;
+    const { BUCKET_SIZE } = fixture.config;
 
-    const [internalContract] = this.accounts.internalContracts;
-    const members = this.accounts.members;
+    const [internalContract] = fixture.accounts.internalContracts;
+    const members = fixture.accounts.members;
 
     const { coverAsset, amount, productId, period } = daiCoverBuyFixture;
 
     // cover 0
-    await buyCoverOnOnePool.call(this, daiCoverBuyFixture);
+    await buyCoverOnOnePool.call(fixture, daiCoverBuyFixture);
     const coverId = await cover.coverDataCount();
     await cover.connect(internalContract).burnStake(coverId, 0, amount);
 
@@ -332,7 +231,7 @@ describe('totalActiveCoverInAsset', function () {
     await increaseTime(BigNumber.from(daiCoverBuyFixture.period).add(BUCKET_SIZE).toNumber());
 
     // New  purchase should be the only active cover
-    await buyCoverOnOnePool.call(this, daiCoverBuyFixture);
+    await buyCoverOnOnePool.call(fixture, daiCoverBuyFixture);
     expect(await cover.totalActiveCoverInAsset(coverAsset)).to.be.equal(amount);
   });
 });

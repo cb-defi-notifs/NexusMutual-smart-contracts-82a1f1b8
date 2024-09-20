@@ -1,8 +1,10 @@
-const { ethers, accounts } = require('hardhat');
+const { ethers } = require('hardhat');
 const { hex } = require('../../../lib/helpers');
+const { getAccounts } = require('../../utils/accounts');
 const { parseEther, parseUnits } = ethers.utils;
 
 async function setup() {
+  const accounts = await getAccounts();
   const NXM = await ethers.getContractFactory('NXMTokenMock');
   const nxm = await NXM.deploy();
   await nxm.deployed();
@@ -15,7 +17,7 @@ async function setup() {
   const tokenController = await ICMockTokenController.deploy(nxm.address);
   await tokenController.deployed();
 
-  nxm.setOperator(tokenController.address);
+  await nxm.setOperator(tokenController.address);
 
   const Master = await ethers.getContractFactory('MasterMock');
   const master = await Master.deploy();
@@ -24,6 +26,9 @@ async function setup() {
   const DAI = await ethers.getContractFactory('ERC20BlacklistableMock');
   const dai = await DAI.deploy();
   await dai.deployed();
+
+  const st = await DAI.deploy();
+  await st.deployed();
 
   const ybDAI = await ethers.getContractFactory('ERC20BlacklistableMock');
   const ybDai = await ybDAI.deploy();
@@ -45,7 +50,7 @@ async function setup() {
   await chainlinkDAI.setLatestAnswer(daiToEthRate);
 
   const PriceFeedOracle = await ethers.getContractFactory('PriceFeedOracle');
-  const priceFeedOracle = await PriceFeedOracle.deploy([dai.address], [chainlinkDAI.address], [18]);
+  const priceFeedOracle = await PriceFeedOracle.deploy([dai.address], [chainlinkDAI.address], [18], st.address);
   const ICMockPool = await ethers.getContractFactory('ICMockPool');
   const pool = await ICMockPool.deploy(priceFeedOracle.address);
   await pool.deployed();
@@ -67,25 +72,34 @@ async function setup() {
   const cover = await Cover.deploy(coverNFT.address);
   await cover.deployed();
 
+  const Ramm = await ethers.getContractFactory('RammMock');
+  const ramm = await Ramm.deploy();
+  await ramm.deployed();
+
+  const CoverProducts = await ethers.getContractFactory('ICMockCoverProducts');
+  const coverProducts = await CoverProducts.deploy();
+
   const masterInitTxs = await Promise.all([
     master.setLatestAddress(hex('TC'), tokenController.address),
     master.setLatestAddress(hex('MR'), memberRoles.address),
     master.setLatestAddress(hex('P1'), pool.address),
     master.setLatestAddress(hex('CO'), cover.address),
     master.setLatestAddress(hex('AS'), assessment.address),
+    master.setLatestAddress(hex('RA'), ramm.address),
+    master.setLatestAddress(hex('CP'), coverProducts.address),
     master.setTokenAddress(nxm.address),
   ]);
   await Promise.all(masterInitTxs.map(x => x.wait()));
 
-  await cover.addProductType('0', '30', '5000');
-  await cover.addProductType('0', '90', '5000');
-  await cover.addProductType('1', '30', '5000');
+  await coverProducts.addProductType('0', '30', '5000');
+  await coverProducts.addProductType('0', '90', '5000');
+  await coverProducts.addProductType('1', '30', '5000');
 
-  await cover.addProduct(['0', '0x0000000000000000000000000000000000000001', '1', '0', '0']);
-  await cover.addProduct(['1', '0x0000000000000000000000000000000000000002', '1', '0', '0']);
-  await cover.addProduct(['2', ybEth.address, '1', 0b01, '0']);
-  await cover.addProduct(['2', ybDai.address, '1', 0b10, '0']);
-  await cover.addProduct(['2', ybPermitDai.address, 0b10, '1', '0']);
+  await coverProducts.addProduct(['0', '0x0000000000000000000000000000000000000001', '1', '0', '0']);
+  await coverProducts.addProduct(['1', '0x0000000000000000000000000000000000000002', '1', '0', '0']);
+  await coverProducts.addProduct(['2', ybEth.address, '1', 0b01, '0']);
+  await coverProducts.addProduct(['2', ybDai.address, '1', 0b10, '0']);
+  await coverProducts.addProduct(['2', ybPermitDai.address, 0b10, '1', '0']);
 
   await cover.setActiveCoverAmountInNXM(2, parseEther('3500'));
 
@@ -105,23 +119,28 @@ async function setup() {
   }
 
   accounts.defaultSender.sendTransaction({ to: pool.address, value: parseEther('10000') });
-  dai.mint(pool.address, parseEther('10000'));
+  await dai.mint(pool.address, parseEther('10000'));
 
   const config = await yieldTokenIncidents.config();
 
-  this.config = config;
-  this.accounts = accounts;
-  this.contracts = {
-    nxm,
-    dai,
-    ybDai,
-    ybEth,
-    ybPermitDai,
-    assessment,
-    yieldTokenIncidents,
-    cover,
-    coverNFT,
-    master,
+  return {
+    config,
+    accounts,
+    contracts: {
+      nxm,
+      dai,
+      st,
+      ybDai,
+      ybEth,
+      ybPermitDai,
+      assessment,
+      yieldTokenIncidents,
+      cover,
+      coverNFT,
+      master,
+      ramm,
+      coverProducts,
+    },
   };
 }
 
